@@ -1,7 +1,11 @@
+import { invoke } from "@tauri-apps/api/core";
 import { jsPDF } from "jspdf";
-import type { ConsultationArtifacts, LetterLanguage, RetentionRecord } from "../types";
-
-const RETENTION_KEY = "consultation_retention_records";
+import type {
+  ConsultationArtifacts,
+  IntegrationsConfig,
+  LetterLanguage,
+  TranscriptionProvider,
+} from "../types";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -22,18 +26,18 @@ function buildDoctorReportTr(transcript: string, patientCode: string): string {
     `Hasta Kodu: ${patientCode || "Belirtilmedi"}`,
     "",
     "Basvuru Nedeni:",
-    "Gorusmede paylasilan sikayetler ve IVF surecine dair beklentiler degerlendirildi.",
+    "Gorusme boyunca infertilite sureci, onceki denemeler ve mevcut beklentiler ele alindi.",
     "",
     "Klinik Ozet:",
     normalizeTranscript(transcript),
     "",
     "Plan:",
-    "- Klinik gecmis teyidi",
-    "- Gerekli tetkiklerin planlanmasi",
-    "- Takip gorusmesi icin tarih belirlenmesi",
+    "- Onceki raporlarin klinik teyidi",
+    "- Gereken tetkik ve laboratuvar adimlarinin planlanmasi",
+    "- Tedavi takvimi icin kontrol gorusmesi",
     "",
     "Not:",
-    "Bu rapor klinik dokumantasyon amaclidir.",
+    "Bu dokuman bilgi ve klinik takip amaclidir.",
   ].join("\n");
 }
 
@@ -55,21 +59,21 @@ function buildPatientLetter(language: LetterLanguage, transcript: string): strin
     `Consultation Summary Letter (${languageLabel(language)})`,
     "",
     "Dear Patient,",
-    "Thank you for attending your consultation today.",
-    "We reviewed your current concerns and discussed your IVF care pathway in detail.",
+    "Thank you for meeting with us today.",
+    "We carefully reviewed your history, current concerns, and treatment options in a clear step-by-step way.",
     "",
-    "Key points from our discussion:",
+    "What we discussed:",
     `- ${core}`,
-    "- Your next steps include planned tests and a follow-up consultation.",
+    "- The next clinical step is to complete planned investigations and review the results together.",
     "",
-    "Please contact the clinic promptly if your symptoms change or worsen.",
+    "If you develop new or worsening symptoms, please contact us promptly.",
     "",
-    "Kind regards,",
+    "Warm regards,",
     "Dr. Senai Aksoy Team",
   ].join("\n");
 }
 
-function downloadPdf(fileName: string, title: string, body: string): void {
+function buildPdfBytes(title: string, body: string): Uint8Array {
   const doc = new jsPDF();
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
@@ -78,69 +82,113 @@ function downloadPdf(fileName: string, title: string, body: string): void {
   doc.setFontSize(11);
   const lines = doc.splitTextToSize(body, 180);
   doc.text(lines, 14, 28);
-  doc.save(fileName);
+  const buffer = doc.output("arraybuffer") as ArrayBuffer;
+  return new Uint8Array(buffer);
 }
 
-function loadRetentionRecords(): RetentionRecord[] {
-  const raw = localStorage.getItem(RETENTION_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as RetentionRecord[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function downloadPdf(fileName: string, bytes: Uint8Array): void {
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
-function saveRetentionRecords(records: RetentionRecord[]): void {
-  localStorage.setItem(RETENTION_KEY, JSON.stringify(records));
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b);
+  });
+  return btoa(binary);
 }
 
-export function runRetentionCleanup(now = new Date()): RetentionRecord[] {
-  const records = loadRetentionRecords();
-  const pending = records.filter((record) => new Date(record.deleteAtIso) > now);
-  saveRetentionRecords(pending);
-  return pending;
+function providerToRust(provider: TranscriptionProvider): string {
+  return provider === "deepgram" ? "deepgram" : "whisper";
+}
+
+export async function runRetentionCleanup(): Promise<number> {
+  return invoke<number>("run_retention_cleanup");
 }
 
 export function startRetentionScheduler(): void {
-  runRetentionCleanup();
-  window.setInterval(() => runRetentionCleanup(), 10 * 60 * 1000);
+  runRetentionCleanup().catch(() => {});
+  window.setInterval(() => {
+    runRetentionCleanup().catch(() => {});
+  }, 10 * 60 * 1000);
 }
 
 export async function processConsultation(input: {
   patientCode: string;
   letterLanguage: LetterLanguage;
-  transcriptRaw: string;
+  audioFile: File;
+  config: IntegrationsConfig;
 }): Promise<ConsultationArtifacts> {
   const generatedAtIso = isoNow();
   const deleteAtIso = addHours(generatedAtIso, 24);
-
-  const doctorReportTr = buildDoctorReportTr(input.transcriptRaw, input.patientCode);
-  const patientLetter = buildPatientLetter(input.letterLanguage, input.transcriptRaw);
-
   const safePatientCode = (input.patientCode || "hasta").replace(/[^\w-]/g, "_");
-  const doctorPdfFileName = `doktor-raporu-${safePatientCode}-${Date.now()}.pdf`;
-  const patientLetterPdfFileName = `hasta-mektubu-${safePatientCode}-${Date.now()}.pdf`;
 
-  downloadPdf(doctorPdfFileName, "Doktor Gorusme Raporu", doctorReportTr);
-  downloadPdf(patientLetterPdfFileName, "Patient Consultation Letter", patientLetter);
+  const audioBytes = new Uint8Array(await input.audioFile.arrayBuffer());
+  const audioB64 = toBase64(audioBytes);
 
-  const records = loadRetentionRecords();
-  records.push({
-    id: crypto.randomUUID(),
-    fileNames: [doctorPdfFileName, patientLetterPdfFileName],
-    deleteAtIso,
+  const transcriptRaw = await invoke<string>("transcribe_audio", {
+    provider: providerToRust(input.config.transcriptionProvider),
+    apiKey: input.config.transcriptionApiKey,
+    audioFileName: input.audioFile.name,
+    audioBase64: audioB64,
   });
-  saveRetentionRecords(records);
+
+  const doctorReportTr = buildDoctorReportTr(transcriptRaw, input.patientCode);
+  const patientLetter = buildPatientLetter(input.letterLanguage, transcriptRaw);
+
+  const stamp = Date.now();
+  const doctorPdfFileName = `doktor-raporu-${safePatientCode}-${stamp}.pdf`;
+  const patientLetterPdfFileName = `hasta-mektubu-${safePatientCode}-${stamp}.pdf`;
+
+  const doctorPdfBytes = buildPdfBytes("Doktor Gorusme Raporu", doctorReportTr);
+  const patientPdfBytes = buildPdfBytes("Patient Consultation Letter", patientLetter);
+
+  downloadPdf(doctorPdfFileName, doctorPdfBytes);
+  downloadPdf(patientLetterPdfFileName, patientPdfBytes);
+
+  const driveFileIds = await invoke<string[]>("deliver_consultation_artifacts", {
+    request: {
+      driveServiceAccountJson: input.config.driveServiceAccountJson,
+      driveTempFolderName: input.config.driveTempFolderName,
+      deleteAtIso,
+      originalAudioFileName: input.audioFile.name,
+      originalAudioBase64: audioB64,
+      recipientEmail: "drsenaiaksoy@gmail.com",
+      gmailClientId: input.config.gmailClientId,
+      gmailClientSecret: input.config.gmailClientSecret,
+      gmailRefreshToken: input.config.gmailRefreshToken,
+      emailSubject: `Konsultasyon Raporu - ${safePatientCode}`,
+      emailBodyText:
+        "Eklerde doktor raporu ve hasta gorusme ozeti yer almaktadir. Ses kaydi 24 saat sonra Drive uzerinden otomatik silinecektir.",
+      attachments: [
+        {
+          fileName: doctorPdfFileName,
+          mimeType: "application/pdf",
+          contentBase64: toBase64(doctorPdfBytes),
+        },
+        {
+          fileName: patientLetterPdfFileName,
+          mimeType: "application/pdf",
+          contentBase64: toBase64(patientPdfBytes),
+        },
+      ],
+    },
+  });
 
   return {
-    transcriptRaw: input.transcriptRaw,
+    transcriptRaw,
     doctorReportTr,
     patientLetter,
     doctorPdfFileName,
     patientLetterPdfFileName,
     generatedAtIso,
     deleteAtIso,
+    driveFileIds,
   };
 }

@@ -2,13 +2,15 @@
 
 Bu proje, hasta gorusmelerini dokumante etmek icin Tauri tabanli bir masaustu MVP iskeletidir.
 
-## MVP kapsam
+## MVP kapsam (guncel)
 
-- Cok dilli konusma metni girisi (simdilik mock transkript)
+- Whisper veya Deepgram ile gercek transkripsiyon
 - Turkce doktor raporu uretimi
 - Hasta ozeti mektubu (dil secimi zorunlu)
 - Iki ayri PDF olusturma
-- 24 saat veri saklama zamanlayici kaydi
+- Gmail API ile PDF ekli otomatik e-posta
+- Google Drive gecici klasorune ses kaydi yukleme
+- 24 saat sonra Drive dosya kimligi bazli kalici silme
 
 ## Calistirma
 
@@ -18,8 +20,12 @@ Bu proje, hasta gorusmelerini dokumante etmek icin Tauri tabanli bir masaustu MV
 3. Gelistirme:
    - `npm run tauri dev`
 
-## Notlar
+## Entegrasyon girisleri
 
-- Simdiki surumde transkripsiyon ve bulut servisleri mock/simule edilmistir.
-- Sonraki adimda Google Drive gecici depolama, Gmail/API ile gonderim ve gercek STT baglantisi eklenmelidir.
-- Saklama politikasi: rapor olustuktan sonra 24 saat icinde temizleme.
+Arayuzde her oturum icin su alanlar doldurulur:
+- Transkripsiyon provider: Whisper / Deepgram
+- Transkripsiyon API key
+- Google Drive Service Account JSON
+- Drive gecici klasor adi (varsayilan: `hasta-kayit-temp`)
+- Gmail OAuth `client_id`, `client_secret`, `refresh_token`
+- Alici e-posta (varsayilan: `drsenaiaksoy@gmail.com`)

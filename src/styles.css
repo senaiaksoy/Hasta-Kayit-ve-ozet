@@ -45,6 +45,7 @@ label {
 
 input,
 select,
+textarea,
 button {
   font: inherit;
   border-radius: 10px;
@@ -54,6 +55,7 @@ button {
 
 input:focus,
 select:focus,
+textarea:focus,
 button:focus {
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
@@ -77,6 +79,7 @@ button {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 8px;
 }
@@ -112,4 +115,10 @@ pre {
   padding: 10px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.fixed-recipient {
+  margin: 2px 0 0;
+  color: #1d4ed8;
+  font-weight: 600;
 }
