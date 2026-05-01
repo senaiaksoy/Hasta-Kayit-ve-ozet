@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hasta Kayit ve Ozet</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Hasta Kayit ve Ozet</h1>
+
+      <section class="card">
+        <h2>Yeni Hasta Kaydi</h2>
+        <form id="patient-form">
+          <label>
+            Ad Soyad
+            <input type="text" id="fullName" required />
+          </label>
+          <label>
+            Yas
+            <input type="number" id="age" min="0" required />
+          </label>
+          <label>
+            Sikayet
+            <textarea id="complaint" rows="3" required></textarea>
+          </label>
+          <button type="submit">Kaydet</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Ozet</h2>
+        <div id="summary"></div>
+      </section>
+
+      <section class="card">
+        <h2>Hasta Listesi</h2>
+        <label class="search-row">
+          Ara (ad, sikayet veya yas)
+          <input type="search" id="patient-search" placeholder="Ornek: bas agrisi" autocomplete="off" />
+        </label>
+        <ul id="patients"></ul>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

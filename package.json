@@ -1,0 +1,29 @@
+{
+  "name": "hasta-kayit-ve-ozet",
+  "version": "1.0.0",
+  "description": "Basit hasta kayit ve ozet uygulamasi",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon --legacy-watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/senaiaksoy/Hasta-Kayit-ve-ozet.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/senaiaksoy/Hasta-Kayit-ve-ozet/issues"
+  },
+  "homepage": "https://github.com/senaiaksoy/Hasta-Kayit-ve-ozet#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
