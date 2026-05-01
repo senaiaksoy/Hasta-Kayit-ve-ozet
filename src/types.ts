@@ -14,10 +14,19 @@ export interface ConsultationArtifacts {
   patientLetterPdfFileName: string;
   generatedAtIso: string;
   deleteAtIso: string;
+  driveFileIds: string[];
 }
 
-export interface RetentionRecord {
-  id: string;
-  fileNames: string[];
-  deleteAtIso: string;
+export type TranscriptionProvider = "whisper" | "deepgram";
+
+export interface IntegrationsConfig {
+  transcriptionProvider: TranscriptionProvider;
+  transcriptionApiKey: string;
+  driveServiceAccountJson: string;
+  driveTempFolderName: string;
+  gmailClientId: string;
+  gmailClientSecret: string;
+  gmailRefreshToken: string;
 }
+
+export interface SecureConfigPayload extends IntegrationsConfig {}
