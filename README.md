@@ -26,4 +26,8 @@ npm start
 Uygulama acilisi:
 
 - `http://localhost:3000`
-- API: `GET /api/patients` (istege bagli `?q=...` ile ad, sikayet veya yasta arama), `POST /api/patients`, `PUT /api/patients/:id`, `DELETE /api/patients/:id`, `GET /api/summary`
+- API: `GET /api/health`, `GET /api/patients` (istege bagli `?q=...` ile ad, sikayet veya yasta arama), `POST /api/patients`, `PUT /api/patients/:id`, `DELETE /api/patients/:id`, `GET /api/summary`
+
+## Ortam degiskenleri
+
+- `PORT`: Sunucu portu (varsayilan `3000`)

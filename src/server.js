@@ -40,9 +40,74 @@ function savePatients(patients) {
 const patients = loadPatients();
 let nextId = patients.reduce((max, patient) => Math.max(max, Number(patient.id) || 0), 0) + 1;
 
+function parseAge(value) {
+  if (value === null || value === undefined || value === "") {
+    return { ok: false, message: "Yas gecersiz." };
+  }
+
+  const age = Number(value);
+  if (!Number.isFinite(age)) {
+    return { ok: false, message: "Yas sayi olmalidir." };
+  }
+
+  if (!Number.isInteger(age)) {
+    return { ok: false, message: "Yas tam sayi olmalidir." };
+  }
+
+  if (age < 0 || age > 130) {
+    return { ok: false, message: "Yas 0 ile 130 arasinda olmalidir." };
+  }
+
+  return { ok: true, age };
+}
+
+function normalizePatientInput(body) {
+  const fullName = String(body.fullName ?? "").trim();
+  const complaint = String(body.complaint ?? "").trim();
+  const ageResult = parseAge(body.age);
+
+  if (!fullName || !complaint) {
+    return { ok: false, message: "fullName ve complaint alanlari zorunludur." };
+  }
+
+  if (!ageResult.ok) {
+    return { ok: false, message: ageResult.message };
+  }
+
+  return { ok: true, fullName, complaint, age: ageResult.age };
+}
+
+function findLatestPatient(list) {
+  if (list.length === 0) {
+    return null;
+  }
+
+  let latest = list[0];
+  let latestTime = Date.parse(latest.createdAt);
+
+  for (const patient of list) {
+    const time = Date.parse(patient.createdAt);
+    if (Number.isFinite(time) && time >= latestTime) {
+      latest = patient;
+      latestTime = time;
+    }
+  }
+
+  return latest;
+}
+
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true });
+});
+
 app.get("/api/patients", (req, res) => {
   const rawQuery = req.query.q;
-  const q = typeof rawQuery === "string" ? rawQuery.trim().toLowerCase() : "";
+  const q =
+    typeof rawQuery === "string"
+      ? rawQuery.trim().toLowerCase()
+      : Array.isArray(rawQuery) && typeof rawQuery[0] === "string"
+        ? rawQuery[0].trim().toLowerCase()
+        : "";
   if (!q) {
     return res.json(patients);
   }
@@ -58,19 +123,16 @@ app.get("/api/patients", (req, res) => {
 });
 
 app.post("/api/patients", (req, res) => {
-  const { fullName, age, complaint } = req.body;
-
-  if (!fullName || !age || !complaint) {
-    return res.status(400).json({
-      message: "fullName, age ve complaint alanlari zorunludur.",
-    });
+  const input = normalizePatientInput(req.body);
+  if (!input.ok) {
+    return res.status(400).json({ message: input.message });
   }
 
   const patient = {
     id: nextId++,
-    fullName: String(fullName).trim(),
-    age: Number(age),
-    complaint: String(complaint).trim(),
+    fullName: input.fullName,
+    age: input.age,
+    complaint: input.complaint,
     createdAt: new Date().toISOString(),
   };
 
@@ -88,12 +150,9 @@ app.post("/api/patients", (req, res) => {
 
 app.put("/api/patients/:id", (req, res) => {
   const patientId = Number(req.params.id);
-  const { fullName, age, complaint } = req.body;
-
-  if (!fullName || !age || !complaint) {
-    return res.status(400).json({
-      message: "fullName, age ve complaint alanlari zorunludur.",
-    });
+  const input = normalizePatientInput(req.body);
+  if (!input.ok) {
+    return res.status(400).json({ message: input.message });
   }
 
   const patient = patients.find((item) => item.id === patientId);
@@ -101,9 +160,9 @@ app.put("/api/patients/:id", (req, res) => {
     return res.status(404).json({ message: "Hasta bulunamadi." });
   }
 
-  patient.fullName = String(fullName).trim();
-  patient.age = Number(age);
-  patient.complaint = String(complaint).trim();
+  patient.fullName = input.fullName;
+  patient.age = input.age;
+  patient.complaint = input.complaint;
 
   try {
     savePatients(patients);
@@ -140,17 +199,18 @@ app.delete("/api/patients/:id", (req, res) => {
 
 app.get("/api/summary", (req, res) => {
   const totalPatients = patients.length;
+  const validAges = patients
+    .map((patient) => Number(patient.age))
+    .filter((age) => Number.isFinite(age));
   const avgAge =
-    totalPatients === 0
+    validAges.length === 0
       ? 0
-      : Number(
-          (patients.reduce((sum, patient) => sum + patient.age, 0) / totalPatients).toFixed(1)
-        );
+      : Number((validAges.reduce((sum, age) => sum + age, 0) / validAges.length).toFixed(1));
 
   res.json({
     totalPatients,
     averageAge: avgAge,
-    latestPatient: patients[totalPatients - 1] || null,
+    latestPatient: findLatestPatient(patients),
   });
 });
 
