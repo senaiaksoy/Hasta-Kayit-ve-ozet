@@ -4,6 +4,12 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { spawnSync } = require("child_process");
+let ffmpegStaticPath = null;
+try {
+  ffmpegStaticPath = require("ffmpeg-static");
+} catch (error) {
+  ffmpegStaticPath = null;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -129,14 +135,12 @@ function transcribeWithLocalWhisper(inputPath) {
   }
 
   const parsed = availableCandidate;
-  const language = String(process.env.WHISPER_LANGUAGE || "tr").trim() || "tr";
+  const language = String(process.env.WHISPER_LANGUAGE || "auto").trim().toLowerCase() || "auto";
   const model = String(process.env.WHISPER_MODEL || "small").trim() || "small";
 
   const args = [
     ...parsed.baseArgs,
     inputPath,
-    "--language",
-    language,
     "--model",
     model,
     "--output_format",
@@ -144,13 +148,43 @@ function transcribeWithLocalWhisper(inputPath) {
     "--output_dir",
     path.dirname(inputPath),
   ];
+  if (language !== "auto") {
+    args.push("--language", language);
+  }
+
+  const cleanEnv = { ...process.env };
+  const proxyKeys = [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+    "SOCKS_PROXY",
+    "SOCKS5_PROXY",
+    "socks_proxy",
+    "socks5_proxy",
+    "GIT_HTTP_PROXY",
+    "GIT_HTTPS_PROXY",
+  ];
+  for (const key of proxyKeys) {
+    delete cleanEnv[key];
+  }
 
   const result = spawnSync(parsed.command, args, {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...cleanEnv,
       XDG_CACHE_HOME: whisperCacheDir,
       WHISPER_CACHE_DIR: whisperCacheDir,
+      ...(ffmpegStaticPath
+        ? {
+            FFMPEG_BINARY: ffmpegStaticPath,
+            PATH: `${path.dirname(ffmpegStaticPath)}:${cleanEnv.PATH || ""}`,
+          }
+        : {}),
     },
   });
   if (result.error) {
@@ -175,6 +209,19 @@ function transcribeWithLocalWhisper(inputPath) {
     return {
       ok: false,
       message: `Whisper hata verdi (kod ${result.status}).${stderr ? ` Detay: ${stderr}` : ""}`,
+    };
+  }
+
+  const stderrAfterRun = String(result.stderr || "").trim().toLowerCase();
+  if (
+    stderrAfterRun.includes("no such file or directory: 'ffmpeg'") ||
+    stderrAfterRun.includes("filenotfounderror") ||
+    stderrAfterRun.includes("skipping") && stderrAfterRun.includes("ffmpeg")
+  ) {
+    return {
+      ok: false,
+      message:
+        "Whisper sesi isleyemedi: ffmpeg bulunamadi. Sunucuyu yeniden baslatip tekrar deneyin (projede ffmpeg-static kullaniliyor).",
     };
   }
 

@@ -52,7 +52,7 @@ Bu proje **dis STT API kullanmaz**. Tarayicidan gelen sesi sunucu diske yazar ve
 
 - `PORT`: Sunucu portu (varsayilan `3000`)
 - `WHISPER_CMD`: Whisper komutu (varsayilan `whisper`). Ornek: `python3 -m whisper`
-- `WHISPER_LANGUAGE`: Dil kodu (varsayilan `tr`)
+- `WHISPER_LANGUAGE`: Dil kodu. Varsayilan `auto` (Whisper otomatik tespit eder). Ornek sabitleme: `tr`
 - `WHISPER_MODEL`: Model adi (varsayilan `small`)
 
 ### Notlar
