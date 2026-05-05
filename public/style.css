@@ -9,6 +9,12 @@ body {
   color: #111827;
 }
 
+.muted {
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .container {
   max-width: 720px;
   margin: 24px auto;
@@ -57,6 +63,31 @@ button {
   background: #2563eb;
   color: #fff;
   cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+select {
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.record-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.visit-output {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 ul {

@@ -2,14 +2,18 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const { spawnSync } = require("child_process");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const dataDir = path.join(__dirname, "..", "data");
 const dataFile = path.join(dataDir, "patients.json");
+const visitsFile = path.join(dataDir, "visits.json");
+const audioDir = path.join(dataDir, "audio");
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 function ensureStorage() {
@@ -18,6 +22,12 @@ function ensureStorage() {
   }
   if (!fs.existsSync(dataFile)) {
     fs.writeFileSync(dataFile, "[]", "utf8");
+  }
+  if (!fs.existsSync(visitsFile)) {
+    fs.writeFileSync(visitsFile, "[]", "utf8");
+  }
+  if (!fs.existsSync(audioDir)) {
+    fs.mkdirSync(audioDir, { recursive: true });
   }
 }
 
@@ -37,8 +47,114 @@ function savePatients(patients) {
   fs.writeFileSync(dataFile, JSON.stringify(patients, null, 2), "utf8");
 }
 
+function loadVisits() {
+  ensureStorage();
+  try {
+    const raw = fs.readFileSync(visitsFile, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error("Could not load visits file:", error);
+    return [];
+  }
+}
+
+function saveVisits(visits) {
+  fs.writeFileSync(visitsFile, JSON.stringify(visits, null, 2), "utf8");
+}
+
 const patients = loadPatients();
 let nextId = patients.reduce((max, patient) => Math.max(max, Number(patient.id) || 0), 0) + 1;
+
+const visits = loadVisits();
+let nextVisitId =
+  visits.reduce((max, visit) => Math.max(max, Number(visit.id) || 0), 0) + 1;
+
+function getWhisperCommand() {
+  return String(process.env.WHISPER_CMD || "whisper").trim() || "whisper";
+}
+
+function whisperAvailable() {
+  const cmd = getWhisperCommand();
+  const helpAttempts = [["-h"], ["--help"]];
+  for (const args of helpAttempts) {
+    const result = spawnSync(cmd, args, { encoding: "utf8" });
+    if (result.status === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function transcribeWithLocalWhisper(inputPath) {
+  const cmd = getWhisperCommand();
+  const language = String(process.env.WHISPER_LANGUAGE || "tr").trim() || "tr";
+  const model = String(process.env.WHISPER_MODEL || "small").trim() || "small";
+
+  const args = [inputPath, "--language", language, "--model", model, "--output_format", "txt"];
+
+  const result = spawnSync(cmd, args, { encoding: "utf8" });
+  if (result.error) {
+    return { ok: false, message: `Whisper calistirilamadi: ${result.error.message}` };
+  }
+
+  if (result.status !== 0) {
+    const stderr = String(result.stderr || "").trim();
+    return {
+      ok: false,
+      message: `Whisper hata verdi (kod ${result.status}).${stderr ? ` Detay: ${stderr}` : ""}`,
+    };
+  }
+
+  const baseName = path.basename(inputPath, path.extname(inputPath));
+  const txtPath = path.join(path.dirname(inputPath), `${baseName}.txt`);
+  if (!fs.existsSync(txtPath)) {
+    return { ok: false, message: "Whisper cikti dosyasi bulunamadi (.txt)." };
+  }
+
+  const text = fs.readFileSync(txtPath, "utf8").trim();
+  return { ok: true, text, txtPath };
+}
+
+function buildLocalSummaries({ patient, transcript }) {
+  const patientLine = patient
+    ? `Hasta: ${patient.fullName} (${patient.age}). Kayitli sikayet: ${patient.complaint}.`
+    : "Hasta secilmedi (yalnizca gorusme metni).";
+
+  const cleaned = String(transcript || "").trim();
+  const shortTranscript =
+    cleaned.length > 1200 ? `${cleaned.slice(0, 1200)}\n\n[... metin kisaltildi ...]` : cleaned;
+
+  const doctorSummary = [
+    "DOKTOR ICIN OZET (OTOMATIK / YEREL)",
+    "",
+    patientLine,
+    "",
+    "Gorusme transkripti (ham):",
+    shortTranscript || "(bos)",
+    "",
+    "Not: Bu metin tibbi tani/tedavi onerisi degildir; klinik karar icin doktor degerlendirmesi gerekir.",
+  ].join("\n");
+
+  const patientHandout = [
+    "HASTA ICIN BILGILENDIRME (OTOMATIK / YEREL)",
+    "",
+    "Bu belge, gorusmede gecenlerin basit bir ozetidir.",
+    "Tani koymaz, tedavi onermez.",
+    "",
+    patient ? `Sayin ${patient.fullName},` : "Sayin hasta,",
+    "",
+    "Gorusmede one cikanlar (metin tabanli):",
+    shortTranscript ? shortTranscript : "Transkript bulunamadi.",
+    "",
+    "Ne yapmalisiniz?",
+    "- Doktorunun sordugu sorulari net yanitlayin.",
+    "- Ilac dozunu kendi basina degistirmeyin.",
+    "- Acil durumda 112'yi arayin.",
+  ].join("\n");
+
+  return { doctorSummary, patientHandout };
+}
 
 function parseAge(value) {
   if (value === null || value === undefined || value === "") {
@@ -213,6 +329,92 @@ app.get("/api/summary", (req, res) => {
     latestPatient: findLatestPatient(patients),
   });
 });
+
+app.get("/api/visits", (req, res) => {
+  const rawPatientId = req.query.patientId;
+  const patientId =
+    typeof rawPatientId === "string"
+      ? Number(rawPatientId)
+      : Array.isArray(rawPatientId) && typeof rawPatientId[0] === "string"
+        ? Number(rawPatientId[0])
+        : NaN;
+
+  if (rawPatientId !== undefined && !Number.isFinite(patientId)) {
+    return res.status(400).json({ message: "patientId gecersiz." });
+  }
+
+  if (Number.isFinite(patientId)) {
+    return res.json(visits.filter((visit) => visit.patientId === patientId));
+  }
+
+  res.json(visits);
+});
+
+app.post(
+  "/api/visits/transcribe",
+  express.raw({ type: "*/*", limit: "40mb" }),
+  (req, res) => {
+    const patientId = Number(req.query.patientId);
+    if (!Number.isFinite(patientId)) {
+      return res.status(400).json({ message: "patientId zorunludur." });
+    }
+
+    const patient = patients.find((item) => item.id === patientId);
+    if (!patient) {
+      return res.status(404).json({ message: "Hasta bulunamadi." });
+    }
+
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ message: "Ses verisi bos." });
+    }
+
+    if (!whisperAvailable()) {
+      return res.status(501).json({
+        message:
+          "Yerel transkripsiyon icin makinede 'whisper' komutu bulunamadi. OpenAI Whisper CLI kurun ve PATH'e ekleyin; veya WHISPER_CMD ile tam yolu verin.",
+      });
+    }
+
+    const mimeType = String(req.get("content-type") || "application/octet-stream");
+    const extension = mimeType.includes("webm") ? "webm" : mimeType.includes("wav") ? "wav" : "bin";
+    const fileName = `${patientId}-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${extension}`;
+    const inputPath = path.join(audioDir, fileName);
+
+    try {
+      fs.writeFileSync(inputPath, req.body);
+    } catch (error) {
+      return res.status(500).json({ message: "Ses dosyasi yazilamadi." });
+    }
+
+    const transcription = transcribeWithLocalWhisper(inputPath);
+    if (!transcription.ok) {
+      return res.status(500).json({ message: transcription.message });
+    }
+
+    const summaries = buildLocalSummaries({ patient, transcript: transcription.text });
+
+    const visit = {
+      id: nextVisitId++,
+      patientId,
+      createdAt: new Date().toISOString(),
+      audioPath: inputPath,
+      transcriptPath: transcription.txtPath,
+      transcript: transcription.text,
+      doctorSummary: summaries.doctorSummary,
+      patientHandout: summaries.patientHandout,
+    };
+
+    visits.push(visit);
+    try {
+      saveVisits(visits);
+    } catch (error) {
+      visits.pop();
+      return res.status(500).json({ message: "Ziyaret kaydi dosyaya yazilamadi." });
+    }
+
+    return res.status(201).json(visit);
+  }
+);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

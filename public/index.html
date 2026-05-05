@@ -30,6 +30,41 @@
       </section>
 
       <section class="card">
+        <h2>Gorusme Kaydi (Yerel)</h2>
+        <p class="muted">
+          Ses tarayicida kaydedilir ve sunucuya yuklenir. Metne cevirme icin bilgisayarda yerel
+          <strong>whisper</strong> komutu gerekir (dis STT API yok).
+        </p>
+
+        <label>
+          Hasta sec
+          <select id="visit-patient"></select>
+        </label>
+
+        <div class="record-row">
+          <button type="button" id="record-start">Kayda basla</button>
+          <button type="button" id="record-stop" disabled>Kaydi durdur ve isle</button>
+        </div>
+
+        <div id="visit-status" class="muted"></div>
+
+        <div class="visit-output">
+          <label>
+            Transkript
+            <textarea id="visit-transcript" rows="6" readonly></textarea>
+          </label>
+          <label>
+            Doktor ozeti
+            <textarea id="visit-doctor" rows="8" readonly></textarea>
+          </label>
+          <label>
+            Hasta bilgilendirme
+            <textarea id="visit-patient-doc" rows="8" readonly></textarea>
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Ozet</h2>
         <div id="summary"></div>
       </section>
