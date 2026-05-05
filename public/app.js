@@ -3,6 +3,7 @@ const summaryEl = document.getElementById("summary");
 const patientsEl = document.getElementById("patients");
 const searchInput = document.getElementById("patient-search");
 const visitPatientSelect = document.getElementById("visit-patient");
+const visitLanguageSelect = document.getElementById("visit-language");
 const recordStartBtn = document.getElementById("record-start");
 const recordStopBtn = document.getElementById("record-stop");
 const visitStatusEl = document.getElementById("visit-status");
@@ -184,11 +185,15 @@ recordStopBtn.addEventListener("click", async () => {
 
   setVisitStatus("Sunucuya yukleniyor ve yerel whisper ile metne cevriliyor...");
 
-  const response = await fetch(`/api/visits/transcribe?patientId=${encodeURIComponent(patientId)}`, {
+  const selectedLanguage = visitLanguageSelect.value || "auto";
+  const response = await fetch(
+    `/api/visits/transcribe?patientId=${encodeURIComponent(patientId)}&lang=${encodeURIComponent(selectedLanguage)}`,
+    {
     method: "POST",
     headers: { "Content-Type": recorderMimeType },
     body: blob,
-  });
+    }
+  );
 
   const payloadText = await response.text();
   let payload = null;

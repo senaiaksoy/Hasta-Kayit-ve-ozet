@@ -128,15 +128,33 @@ function whisperAvailable() {
   return false;
 }
 
-function transcribeWithLocalWhisper(inputPath) {
+function normalizeLanguageInput(rawLanguage) {
+  const value = String(rawLanguage ?? "").trim().toLowerCase();
+  if (!value || value === "auto") {
+    return "auto";
+  }
+  if (!/^[a-z]{2,5}$/.test(value)) {
+    return null;
+  }
+  return value;
+}
+
+function transcribeWithLocalWhisper(inputPath, forcedLanguage = null) {
   const availableCandidate = getWhisperCandidates().find((candidate) => isWhisperCandidateAvailable(candidate));
   if (!availableCandidate) {
     return { ok: false, message: "Whisper komutu bulunamadi. 'whisper' veya 'python3 -m whisper' kurun." };
   }
 
   const parsed = availableCandidate;
-  const language = String(process.env.WHISPER_LANGUAGE || "auto").trim().toLowerCase() || "auto";
-  const model = String(process.env.WHISPER_MODEL || "small").trim() || "small";
+  const envLanguage = String(process.env.WHISPER_LANGUAGE || "auto").trim().toLowerCase() || "auto";
+  const language = forcedLanguage || envLanguage;
+  const requestedModel = String(process.env.WHISPER_MODEL || "tiny").trim() || "tiny";
+  let model = requestedModel;
+  const requestedModelPath = path.join(whisperCacheDir, "whisper", `${requestedModel}.pt`);
+  const tinyModelPath = path.join(whisperCacheDir, "whisper", "tiny.pt");
+  if (!fs.existsSync(requestedModelPath) && fs.existsSync(tinyModelPath)) {
+    model = "tiny";
+  }
 
   const args = [
     ...parsed.baseArgs,
@@ -473,6 +491,11 @@ app.post(
   "/api/visits/transcribe",
   express.raw({ type: "*/*", limit: "40mb" }),
   (req, res) => {
+    const parsedLanguage = normalizeLanguageInput(req.query.lang);
+    if (parsedLanguage === null) {
+      return res.status(400).json({ message: "lang parametresi gecersiz. Ornek: auto, tr, en." });
+    }
+
     const patientId = Number(req.query.patientId);
     if (!Number.isFinite(patientId)) {
       return res.status(400).json({ message: "patientId zorunludur." });
@@ -505,7 +528,7 @@ app.post(
       return res.status(500).json({ message: "Ses dosyasi yazilamadi." });
     }
 
-    const transcription = transcribeWithLocalWhisper(inputPath);
+    const transcription = transcribeWithLocalWhisper(inputPath, parsedLanguage);
     if (!transcription.ok) {
       return res.status(500).json({ message: transcription.message });
     }

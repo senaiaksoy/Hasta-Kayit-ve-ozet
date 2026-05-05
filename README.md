@@ -53,7 +53,9 @@ Bu proje **dis STT API kullanmaz**. Tarayicidan gelen sesi sunucu diske yazar ve
 - `PORT`: Sunucu portu (varsayilan `3000`)
 - `WHISPER_CMD`: Whisper komutu (varsayilan `whisper`). Ornek: `python3 -m whisper`
 - `WHISPER_LANGUAGE`: Dil kodu. Varsayilan `auto` (Whisper otomatik tespit eder). Ornek sabitleme: `tr`
-- `WHISPER_MODEL`: Model adi (varsayilan `small`)
+- `WHISPER_MODEL`: Model adi (varsayilan `tiny`). Not: istenen model cache'de yoksa ve `tiny.pt` varsa otomatik `tiny` kullanilir.
+
+Arayuzde gorusme kaydi alaninda dil secimi yapabilirsiniz. Secilen dil, transkripsiyon isteginde `lang` parametresi olarak gonderilir (`auto`, `tr`, `en` vb.).
 
 ### Notlar
 
