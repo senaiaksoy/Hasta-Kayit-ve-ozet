@@ -204,7 +204,9 @@ recordStopBtn.addEventListener("click", async () => {
     visitTranscriptEl.value = "";
     visitDoctorEl.value = "";
     visitPatientDocEl.value = "";
-    setVisitStatus(payload?.message || "Islem basarisiz oldu.");
+    const rawMessage = payload?.message || "Islem basarisiz oldu.";
+    const compactMessage = rawMessage.length > 280 ? `${rawMessage.slice(0, 280)}...` : rawMessage;
+    setVisitStatus(compactMessage);
     return;
   }
 

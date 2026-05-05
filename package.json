@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon --legacy-watch src/server.js",
+    "dev:local": "WHISPER_CMD='python3 -m whisper' WHISPER_MODEL=tiny nodemon --legacy-watch src/server.js",
     "start": "node src/server.js"
   },
   "repository": {

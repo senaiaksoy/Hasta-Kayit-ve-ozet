@@ -22,6 +22,12 @@ Gelistirme modu:
 npm run dev
 ```
 
+Yerel whisper ile tek komut:
+
+```bash
+npm run dev:local
+```
+
 Uretim modu:
 
 ```bash
@@ -45,7 +51,7 @@ Bu proje **dis STT API kullanmaz**. Tarayicidan gelen sesi sunucu diske yazar ve
 ### Ortam degiskenleri
 
 - `PORT`: Sunucu portu (varsayilan `3000`)
-- `WHISPER_CMD`: Whisper calistirilabilir adi veya tam yol (varsayilan `whisper`)
+- `WHISPER_CMD`: Whisper komutu (varsayilan `whisper`). Ornek: `python3 -m whisper`
 - `WHISPER_LANGUAGE`: Dil kodu (varsayilan `tr`)
 - `WHISPER_MODEL`: Model adi (varsayilan `small`)
 

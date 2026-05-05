@@ -11,6 +11,7 @@ const dataDir = path.join(__dirname, "..", "data");
 const dataFile = path.join(dataDir, "patients.json");
 const visitsFile = path.join(dataDir, "visits.json");
 const audioDir = path.join(dataDir, "audio");
+const whisperCacheDir = path.join(dataDir, "whisper-cache");
 
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
@@ -28,6 +29,9 @@ function ensureStorage() {
   }
   if (!fs.existsSync(audioDir)) {
     fs.mkdirSync(audioDir, { recursive: true });
+  }
+  if (!fs.existsSync(whisperCacheDir)) {
+    fs.mkdirSync(whisperCacheDir, { recursive: true });
   }
 }
 
@@ -74,11 +78,34 @@ function getWhisperCommand() {
   return String(process.env.WHISPER_CMD || "whisper").trim() || "whisper";
 }
 
-function whisperAvailable() {
-  const cmd = getWhisperCommand();
+function parseCommandString(commandText) {
+  const tokens = String(commandText || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (tokens.length === 0) {
+    return { command: "whisper", baseArgs: [] };
+  }
+
+  return { command: tokens[0], baseArgs: tokens.slice(1) };
+}
+
+function getWhisperCandidates() {
+  const primary = parseCommandString(getWhisperCommand());
+  const fallbacks = [parseCommandString("python3 -m whisper"), parseCommandString("python -m whisper")];
+  return [primary, ...fallbacks].filter(
+    (candidate, index, arr) =>
+      arr.findIndex(
+        (item) => item.command === candidate.command && item.baseArgs.join(" ") === candidate.baseArgs.join(" ")
+      ) === index
+  );
+}
+
+function isWhisperCandidateAvailable(candidate) {
   const helpAttempts = [["-h"], ["--help"]];
   for (const args of helpAttempts) {
-    const result = spawnSync(cmd, args, { encoding: "utf8" });
+    const result = spawnSync(candidate.command, [...candidate.baseArgs, ...args], { encoding: "utf8" });
     if (result.status === 0) {
       return true;
     }
@@ -86,20 +113,63 @@ function whisperAvailable() {
   return false;
 }
 
+function whisperAvailable() {
+  for (const candidate of getWhisperCandidates()) {
+    if (isWhisperCandidateAvailable(candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function transcribeWithLocalWhisper(inputPath) {
-  const cmd = getWhisperCommand();
+  const availableCandidate = getWhisperCandidates().find((candidate) => isWhisperCandidateAvailable(candidate));
+  if (!availableCandidate) {
+    return { ok: false, message: "Whisper komutu bulunamadi. 'whisper' veya 'python3 -m whisper' kurun." };
+  }
+
+  const parsed = availableCandidate;
   const language = String(process.env.WHISPER_LANGUAGE || "tr").trim() || "tr";
   const model = String(process.env.WHISPER_MODEL || "small").trim() || "small";
 
-  const args = [inputPath, "--language", language, "--model", model, "--output_format", "txt"];
+  const args = [
+    ...parsed.baseArgs,
+    inputPath,
+    "--language",
+    language,
+    "--model",
+    model,
+    "--output_format",
+    "txt",
+  ];
 
-  const result = spawnSync(cmd, args, { encoding: "utf8" });
+  const result = spawnSync(parsed.command, args, {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      XDG_CACHE_HOME: whisperCacheDir,
+      WHISPER_CACHE_DIR: whisperCacheDir,
+    },
+  });
   if (result.error) {
     return { ok: false, message: `Whisper calistirilamadi: ${result.error.message}` };
   }
 
   if (result.status !== 0) {
     const stderr = String(result.stderr || "").trim();
+    const lowered = stderr.toLowerCase();
+    if (
+      lowered.includes("tunnel connection failed") ||
+      lowered.includes("403 forbidden") ||
+      lowered.includes("urlopen error")
+    ) {
+      return {
+        ok: false,
+        message:
+          "Whisper model indirilemedi (ag/proxy engeli: 403). Internet erisimi olan bir agda modeli bir kez indirip tekrar deneyin.",
+      };
+    }
+
     return {
       ok: false,
       message: `Whisper hata verdi (kod ${result.status}).${stderr ? ` Detay: ${stderr}` : ""}`,
