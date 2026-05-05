@@ -141,6 +141,8 @@ function transcribeWithLocalWhisper(inputPath) {
     model,
     "--output_format",
     "txt",
+    "--output_dir",
+    path.dirname(inputPath),
   ];
 
   const result = spawnSync(parsed.command, args, {
